@@ -19,33 +19,28 @@ function MiAirPurifier(log, config) {
 
   this.services = [];
 
-  this.rotationSpeedLevels = [
-    [24, 'silent'], [49, 'low'], [74, 'medium'], [100, 'high']
-  ];
+  this.airPurifierService = new Service.AirPurifier(this.name);
 
-  // Air purifier is not available in Homekit yet, register as Fan
-  this.fanService = new Service.Fanv2(this.name);
-
-  this.fanService
+  this.airPurifierService
     .getCharacteristic(Characteristic.Active)
     .on('get', this.getPowerState.bind(this))
     .on('set', this.setPowerState.bind(this));
 
-  this.fanService
+  this.airPurifierService
     .getCharacteristic(Characteristic.RotationSpeed)
     .on('get', this.getRotationSpeed.bind(this))
     .on('set', this.setRotationSpeed.bind(this));
 
-  this.fanService
-    .getCharacteristic(Characteristic.TargetFanState)
+  this.airPurifierService
+    .getCharacteristic(Characteristic.TargetAirPurifierState)
     .on('get', this.getMode.bind(this))
     .on('set', this.setMode.bind(this));
 
-  this.fanService
-    .getCharacteristic(Characteristic.CurrentFanState)
-    .on('get', this.getCurrentFanState.bind(this));
+  this.airPurifierService
+    .getCharacteristic(Characteristic.CurrentAirPurifierState)
+    .on('get', this.getCurrentAirPurifierState.bind(this));
 
-  this.services.push(this.fanService);
+  this.services.push(this.airPurifierService);
 
   this.serviceInfo = new Service.AccessoryInformation();
 
@@ -131,11 +126,11 @@ MiAirPurifier.prototype = {
 
   getPowerState: function (callback) {
     if (!this.device) {
-      callback(null, false);
+      callback(null, Characteristic.Active.INACTIVE);
       return;
     }
 
-    callback(null, this.device.power);
+    callback(null, this.device.power ? Characteristic.Active.ACTIVE : Characteristic.Active.INACTIVE);
   },
 
   setPowerState: function (state, callback) {
@@ -144,44 +139,42 @@ MiAirPurifier.prototype = {
       return;
     }
 
-    this.device.setPower(state);
+    this.device.setPower((Characteristic.Active.ACTIVE === state));
+
     callback();
   },
 
   getMode: function (callback) {
     if (!this.device) {
-      callback(null, false);
+      callback(null, Characteristic.TargetAirPurifierState.AUTO);
       return;
     }
 
     switch (this.device.mode) {
-      case 'auto':
-        callback(null, Characteristic.TargetFanState.AUTO);
-        break;
       case 'favorite':
-        callback(null, Characteristic.TargetFanState.MANUAL);
+        callback(null, Characteristic.TargetAirPurifierState.MANUAL);
         break;
+      case 'auto':
       default:
-        callback(null, false);
+        callback(null, Characteristic.TargetAirPurifierState.AUTO);
     }
   },
 
-  // TODO: When speed rotation trigger at Home app, this method always get called with state = 0 (AUTO)
   setMode: function (state, callback) {
     if (!this.device) {
       callback(new Error('No air purifier is discovered.'));
       return;
     }
 
-    this.log.debug('--------------------- set mode: ' + state);
     switch (state) {
-      case Characteristic.TargetFanState.AUTO:
+      case Characteristic.TargetAirPurifierState.AUTO:
         this.device.setMode('auto');
         break;
-      case Characteristic.TargetFanState.MANUAL:
+      case Characteristic.TargetAirPurifierState.MANUAL:
         this.device.setMode('favorite');
         break;
       default:
+        // Ignore other states (i.e. night mode), put device into idle mode
         this.device.setMode('idle');
     }
 
@@ -197,27 +190,60 @@ MiAirPurifier.prototype = {
     callback(null, this.device.humidity);
   },
 
+  // Unused exp method
+  reportRotationSpeed: function () {
+    var rotationSpeed;
+
+    // Device disconnected or turned off
+    if (!this.device || !this.device.power) {
+      rotationSpeed = 0;
+    } else {
+      rotationSpeed = Math.min(1, (this.device.favoriteLevel / 16) * 100);
+    }
+
+    this.airPurifierService.getCharacteristic(Characteristic.RotationSpeed).updateValue(rotationSpeed);
+  },
+
+  // Unused exp method
+  reportPowerState: function () {
+    var powerState;
+
+    // Device disconnected or turned off
+    if (!this.device || !this.device.power) {
+      powerState = Characteristic.Active.INACTIVE;
+    } else {
+      powerState = Characteristic.Active.ACTIVE;
+    }
+
+    this.airPurifierService.getCharacteristic(Characteristic.Active).updateValue(powerState);
+  },
+
   getRotationSpeed: function (callback) {
-    if (!this.device) {
+    // Device disconnected or turned off
+    if (!this.device || !this.device.power) {
       callback(null, 0);
       return;
     }
 
+    // At least 1% when devices are working
     var rotationSpeed = Math.min(1, (this.device.favoriteLevel / 16) * 100);
     this.log.debug('Pass rotation speed to HomeKit: ' + rotationSpeed);
 
     callback(null, rotationSpeed);
   },
 
-  getCurrentFanState: function (callback) {
+  getCurrentAirPurifierState: function (callback) {
     if (!this.device) {
-      callback(null, 0);
+      callback(null, Characteristic.CurrentAirPurifierState.INACTIVE);
       return;
     }
 
-    // callback(null, Characteristic.CurrentFanState.BLOWING_AIR);
-    // callback(null, Characteristic.CurrentFanState.IDLE);
-    callback(null, Characteristic.CurrentFanState.INACTIVE);
+    if (!this.device.power) {
+      callback(null, Characteristic.CurrentAirPurifierState.IDLE);
+      return;
+    }
+
+    callback(null, Characteristic.CurrentAirPurifierState.PURIFYING_AIR);
   },
 
   setRotationSpeed: function (speed, callback) {
@@ -226,13 +252,10 @@ MiAirPurifier.prototype = {
       return;
     }
 
-    // var previousMode = this.device.mode;
-
+    // 17 levels: https://github.com/aholstenson/miio/blob/master/docs/devices/air-purifier.md
     var favLevel = Math.round(speed / 100 * 16);
     this.device.setFavoriteLevel(favLevel);
     this.log.debug('Set favorite level: ' + favLevel);
-    
-    // this.device.mode = previousMode;
 
     callback();
   },
