@@ -232,16 +232,15 @@ MiAirPurifier.prototype = {
     callback(null, rotationSpeed);
   },
 
+  // TODO: Try to understand three states
   getCurrentAirPurifierState: function (callback) {
-    if (!this.device) {
+    if (!this.device || !this.device.power) {
       callback(null, Characteristic.CurrentAirPurifierState.INACTIVE);
       return;
     }
 
-    if (!this.device.power) {
-      callback(null, Characteristic.CurrentAirPurifierState.IDLE);
-      return;
-    }
+    // No matched states to Mi devices?
+    // callback(null, Characteristic.CurrentAirPurifierState.IDLE);
 
     callback(null, Characteristic.CurrentAirPurifierState.PURIFYING_AIR);
   },
