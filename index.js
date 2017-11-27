@@ -13,9 +13,15 @@ module.exports = function (homebridge) {
 function MiAirPurifier(log, config) {
   this.log = log;
   this.name = config.name || 'Air Purifier';
+  this.deviceId = config.device_id || '';
+  this.deviceToken = config.device_token || '';
   this.showAirQuality = config.showAirQuality || false;
   this.showTemperature = config.showTemperature || false;
   this.showHumidity = config.showHumidity || false;
+
+  if (this.deviceId === '' || this.deviceToken === '') {
+    throw new Error('Configure both device_id and device_token required.')
+  }
 
   this.services = [];
 
@@ -94,9 +100,11 @@ MiAirPurifier.prototype = {
     var browser = miio.browse();
 
     browser.on('available', function (reg) {
-      // Skip device without token
-      if (!reg.token)
+      if (reg.id !== accessory.deviceId) {
         return;
+      }
+
+      reg.token = accessory.deviceToken;
 
       miio.device(reg).then(function (device) {
         if (device.type != 'air-purifier')
@@ -110,9 +118,9 @@ MiAirPurifier.prototype = {
     });
 
     browser.on('unavailable', function (reg) {
-      // Skip device without token
-      if (!reg.token)
+      if (reg.id !== accessory.deviceId) {
         return;
+      }
 
       var device = devices[reg.id];
 

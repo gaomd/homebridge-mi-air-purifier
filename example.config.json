@@ -9,6 +9,17 @@
     {
       "accessory": "MiAirPurifier",
       "name": "Air Purifier",
+      "device_id": "find out with miio --discover",
+      "device_token": "find out with miio --discover",
+      "showTemperature": true,
+      "showHumidity": true,
+      "showAirQuality": true
+    },
+    {
+      "accessory": "MiAirPurifier",
+      "name": "Air Purifier 2",
+      "device_id": "find out with miio --discover",
+      "device_token": "find out with miio --discover",
       "showTemperature": true,
       "showHumidity": true,
       "showAirQuality": true
