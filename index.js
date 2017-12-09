@@ -150,6 +150,15 @@ MiAirPurifier.prototype = {
     this.device.setPower((Characteristic.Active.ACTIVE === state));
 
     callback();
+
+    // Requires current state updated to dismiss the infinity loading icon
+    let currentState = (state === Characteristic.Active.ACTIVE)
+      ? Characteristic.CurrentAirPurifierState.PURIFYING_AIR
+      : Characteristic.CurrentAirPurifierState.INACTIVE;
+
+    this.airPurifierService
+      .getCharacteristic(Characteristic.CurrentAirPurifierState)
+      .updateValue(currentState);
   },
 
   getMode: function (callback) {
